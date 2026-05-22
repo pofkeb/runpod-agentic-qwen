@@ -11,21 +11,20 @@ trap cleanup SIGTERM SIGINT
 
 echo "=== Starting RunPod Agentic Coding Template ==="
 
-echo "[1/3] Starting llama.cpp server..."
+echo "[1/3] Starting llama.cpp server (Q8_K_P, 262K context, thinking enabled)..."
 llama-server \
-    --model /workspace/models/qwen3.6-27b-balanced-q4_k_p.gguf \
+    --model /workspace/models/qwen3.6-27b-balanced-q8_k_p.gguf \
     --host 0.0.0.0 \
     --port 8910 \
     --n-gpu-layers 99 \
-    --ctx-size 32768 \
-    --threads 8 \
+    --ctx-size 262144 \
+    --threads 16 \
     --api-key local \
-    --jinja \
-    --chat-template-kwargs '{"enable_thinking": false}' &
+    --jinja &
 LLAMA_PID=$!
 
 echo "Waiting for llama-server to be ready..."
-for i in $(seq 1 60); do
+for i in $(seq 1 120); do
     if curl -s http://localhost:8910/health > /dev/null 2>&1; then
         echo "llama-server is ready!"
         break
@@ -56,7 +55,7 @@ cat > /workspace/aider-start.sh << 'AIDEREOF'
 #!/bin/bash
 export OPENAI_API_BASE=http://localhost:8910/v1
 export OPENAI_API_KEY=local
-echo "Starting Aider with Qwen3.6 27B Balanced (non-thinking mode)..."
+echo "Starting Aider with Qwen3.6 27B Balanced Q8_K_P (262K context, thinking enabled)..."
 echo "Use /add <file> to include files, then describe what to code."
 echo "---"
 aider --model openai/qwen3.6-27b
@@ -64,15 +63,16 @@ AIDEREOF
 chmod +x /workspace/aider-start.sh
 
 cat > /workspace/README.md << 'READMEEOF'
-# RunPod Agentic Coding Template
+# RunPod Agentic Coding Template — Maximum Configuration
+## GPU: RTX PRO 6000 (96GB VRAM)
+## Model: HauhauCS Qwen3.6-27B-Uncensored-Balanced Q8_K_P (32GB)
+## Context: 262K native | Thinking: Enabled
 ## Interfaces
 - **JupyterLab**: http://[pod-id]-8888.proxy.runpod.net
 - **Open WebUI**: http://[pod-id]-3000.proxy.runpod.net
 - **API**: http://[pod-id]-8910.proxy.runpod.net/v1
 ## Agentic Coding
 Terminal: `bash /workspace/aider-start.sh`
-## Model
-HauhauCS Qwen3.6-27B-Uncensored-Balanced Q4_K_P (17.5GB)
 READMEEOF
 
 echo ""
