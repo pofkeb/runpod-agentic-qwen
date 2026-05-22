@@ -1,3 +1,4 @@
+# Stage 1: Build llama.cpp with CUDA support
 FROM nvidia/cuda:12.4.0-devel-ubuntu22.04 AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -7,9 +8,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git cmake build-essential curl wget \
     && rm -rf /var/lib/apt/lists/*
 
-RUN git clone https://github.com/ggerganov/llama.cpp.git && \
-    cd llama.cpp && \
-    git checkout $(git describe --tags --abbrev=0)
+# Pin to a specific stable release of llama.cpp (b4900 is a recent stable tag)
+RUN git clone --depth 1 --branch b4900 https://github.com/ggerganov/llama.cpp.git
 
 RUN cd llama.cpp && mkdir build && cd build && \
     cmake .. \
@@ -18,6 +18,7 @@ RUN cd llama.cpp && mkdir build && cd build && \
     -DLLAMA_CURL=ON && \
     cmake --build . --config Release -j$(nproc) --target llama-server
 
+# Stage 2: Runtime
 FROM nvidia/cuda:12.4.0-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -36,6 +37,9 @@ RUN pip3 install --no-cache-dir jupyterlab open-webui aider-chat
 
 RUN mkdir -p /workspace/models
 
+# ⚠️ VERIFY THIS URL BEFORE BUILDING
+# Go to https://huggingface.co/HauhauCS and find the GGUF repo.
+# Copy the exact download URL for the Q4_K_M file.
 RUN wget -O /workspace/models/qwen3.6-27b-uncensored-q4_k_m.gguf \
     "https://huggingface.co/HauhauCS/Qwen3.6-27B-Uncensored-HauhauCS-Balanced-GGUF/resolve/main/qwen3.6-27b-uncensored-hauhaucs-balanced-q4_k_m.gguf"
 
