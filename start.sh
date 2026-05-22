@@ -1,6 +1,15 @@
 #!/bin/bash
 set -e
 
+# Trap SIGTERM for clean shutdown
+cleanup() {
+    echo "Shutting down..."
+    kill $LLAMA_PID $WEBUI_PID $JUPYTER_PID 2>/dev/null
+    wait $LLAMA_PID 2>/dev/null
+    exit 0
+}
+trap cleanup SIGTERM SIGINT
+
 echo "=== Starting RunPod Agentic Coding Template ==="
 
 echo "[1/3] Starting llama.cpp server..."
@@ -75,5 +84,7 @@ echo "Open WebUI: http://localhost:3000"
 echo "API: http://localhost:8910"
 echo ""
 echo "Agentic coding: bash /workspace/aider-start.sh"
+echo ""
 
-tail -f /proc/1/fd/1 2>/dev/null || wait $LLAMA_PID
+# Keep container alive on llama-server
+wait $LLAMA_PID
