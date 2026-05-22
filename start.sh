@@ -1,7 +1,6 @@
 #!/bin/bash
 set -e
 
-# Trap SIGTERM for clean shutdown
 cleanup() {
     echo "Shutting down..."
     kill $LLAMA_PID $WEBUI_PID $JUPYTER_PID 2>/dev/null
@@ -14,13 +13,15 @@ echo "=== Starting RunPod Agentic Coding Template ==="
 
 echo "[1/3] Starting llama.cpp server..."
 llama-server \
-    --model /workspace/models/qwen3.6-27b-uncensored-q4_k_m.gguf \
+    --model /workspace/models/qwen3.6-27b-balanced-q4_k_p.gguf \
     --host 0.0.0.0 \
     --port 8910 \
     --n-gpu-layers 99 \
     --ctx-size 32768 \
     --threads 8 \
-    --api-key local &
+    --api-key local \
+    --jinja \
+    --chat-template-kwargs '{"enable_thinking": false}' &
 LLAMA_PID=$!
 
 echo "Waiting for llama-server to be ready..."
@@ -55,7 +56,7 @@ cat > /workspace/aider-start.sh << 'AIDEREOF'
 #!/bin/bash
 export OPENAI_API_BASE=http://localhost:8910/v1
 export OPENAI_API_KEY=local
-echo "Starting Aider with Qwen3.6 27B..."
+echo "Starting Aider with Qwen3.6 27B Balanced (non-thinking mode)..."
 echo "Use /add <file> to include files, then describe what to code."
 echo "---"
 aider --model openai/qwen3.6-27b
@@ -64,17 +65,14 @@ chmod +x /workspace/aider-start.sh
 
 cat > /workspace/README.md << 'READMEEOF'
 # RunPod Agentic Coding Template
-
 ## Interfaces
 - **JupyterLab**: http://[pod-id]-8888.proxy.runpod.net
-- **Open WebUI (Chat)**: http://[pod-id]-3000.proxy.runpod.net
-- **llama.cpp API**: http://[pod-id]-8910.proxy.runpod.net/v1
-
+- **Open WebUI**: http://[pod-id]-3000.proxy.runpod.net
+- **API**: http://[pod-id]-8910.proxy.runpod.net/v1
 ## Agentic Coding
-Open a terminal in JupyterLab and run: `bash /workspace/aider-start.sh`
-
+Terminal: `bash /workspace/aider-start.sh`
 ## Model
-HauhauCS Qwen3.6-27B-Uncensored-Balanced Q4_K_M
+HauhauCS Qwen3.6-27B-Uncensored-Balanced Q4_K_P (17.5GB)
 READMEEOF
 
 echo ""
@@ -86,5 +84,4 @@ echo ""
 echo "Agentic coding: bash /workspace/aider-start.sh"
 echo ""
 
-# Keep container alive on llama-server
 wait $LLAMA_PID
