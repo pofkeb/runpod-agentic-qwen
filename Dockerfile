@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git cmake build-essential curl wget \
     && rm -rf /var/lib/apt/lists/*
 
-RUN git clone --depth 1 --branch b4900 https://github.com/ggerganov/llama.cpp.git
+RUN git clone https://github.com/ggerganov/llama.cpp.git
 
 RUN cd llama.cpp && mkdir build && cd build && \
     cmake .. \
@@ -36,7 +36,6 @@ RUN pip3 install --no-cache-dir jupyterlab open-webui aider-chat
 
 RUN mkdir -p /workspace/models
 
-# Download Balanced Q4_K_P (17.5GB, fits 24GB VRAM with room for context)
 RUN wget -O /workspace/models/qwen3.6-27b-balanced-q4_k_p.gguf \
     "https://huggingface.co/HauhauCS/Qwen3.6-27B-Uncensored-HauhauCS-Balanced/resolve/main/Qwen3.6-27B-Uncensored-HauhauCS-Balanced-Q4_K_P.gguf"
 
