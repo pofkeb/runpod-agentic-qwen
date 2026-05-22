@@ -1,4 +1,4 @@
-# Stage 1: Build llama.cpp with CUDA
+# Stage 1: Build llama.cpp with CUDA for Blackwell (RTX PRO 6000)
 FROM nvidia/cuda:12.4.0-devel-ubuntu22.04 AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -13,7 +13,7 @@ RUN git clone https://github.com/ggerganov/llama.cpp.git
 RUN cd llama.cpp && mkdir build && cd build && \
     cmake .. \
     -DLLAMA_CUDA=ON \
-    -DCMAKE_CUDA_ARCHITECTURES=89 \
+    -DCMAKE_CUDA_ARCHITECTURES=120 \
     -DLLAMA_CURL=ON && \
     cmake --build . --config Release -j$(nproc) --target llama-server
 
@@ -36,8 +36,9 @@ RUN pip3 install --no-cache-dir jupyterlab open-webui aider-chat
 
 RUN mkdir -p /workspace/models
 
-RUN wget -O /workspace/models/qwen3.6-27b-balanced-q4_k_p.gguf \
-    "https://huggingface.co/HauhauCS/Qwen3.6-27B-Uncensored-HauhauCS-Balanced/resolve/main/Qwen3.6-27B-Uncensored-HauhauCS-Balanced-Q4_K_P.gguf"
+# Q8_K_P (32GB) — maximum quality quant for 27B Balanced
+RUN wget -O /workspace/models/qwen3.6-27b-balanced-q8_k_p.gguf \
+    "https://huggingface.co/HauhauCS/Qwen3.6-27B-Uncensored-HauhauCS-Balanced/resolve/main/Qwen3.6-27B-Uncensored-HauhauCS-Balanced-Q8_K_P.gguf"
 
 COPY start.sh /start.sh
 RUN chmod +x /start.sh
