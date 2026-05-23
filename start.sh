@@ -36,7 +36,7 @@ mkdir -p "$MODELS_DIR"
 
 cleanup() {
     echo "Shutting down..."
-    kill $LLAMA_PID $WEBUI_PID $JUPYTER_PID 2>/dev/null || true
+    kill $LLAMA_PID $WEBUI_PID $OPENHANDS_PID $JUPYTER_PID 2>/dev/null || true
     wait $LLAMA_PID 2>/dev/null || true
     exit 0
 }
@@ -90,7 +90,7 @@ if [ -z "$MODEL_FILE" ]; then
     exit 1
 fi
 
-# Thinking toggle (Qwen3.6 dropped the /think /no_think switches — use template kwarg)
+# Thinking toggle
 THINK_ARGS=()
 if [ "$ENABLE_THINKING" = "false" ]; then
     THINK_ARGS=(--chat-template-kwargs '{"enable_thinking": false}')
@@ -108,15 +108,15 @@ fi
 echo "======================================================================"
 echo " Model    : $REPO"
 echo " File     : $MODEL_FILE"
-echo " Served as: $SERVED_NAME   (use this as the model name in API/aider)"
+echo " Served as: $SERVED_NAME"
 echo " Context  : $CTX_SIZE | Thinking: $ENABLE_THINKING"
 echo " Auth     : $AUTH_NOTE"
 echo "======================================================================"
 
 ###############################################################################
-# [1/3] llama.cpp server
+# [1/4] llama.cpp server
 ###############################################################################
-echo "[1/3] Starting llama.cpp server on :8910 ..."
+echo "[1/4] Starting llama.cpp server on :8910 ..."
 llama-server \
     --model "$MODEL_FILE" \
     --alias "$SERVED_NAME" \
@@ -140,9 +140,9 @@ for i in $(seq 1 180); do
 done
 
 ###############################################################################
-# [2/3] Open WebUI
+# [2/4] Open WebUI  (chat interface)
 ###############################################################################
-echo "[2/3] Starting Open WebUI on :3000 ..."
+echo "[2/4] Starting Open WebUI on :3000 ..."
 OPENAI_API_BASE_URL="http://localhost:8910/v1" \
 OPENAI_API_KEY="${API_KEY:-none}" \
 OPENAI_API_KEYS="${API_KEY:-none}" \
@@ -151,33 +151,28 @@ open-webui serve --host 0.0.0.0 --port 3000 &
 WEBUI_PID=$!
 
 ###############################################################################
-# [3/3] JupyterLab
+# [3/4] Open Hands  (agentic coding UI — like Claude Code in the browser)
 ###############################################################################
-echo "[3/3] Starting JupyterLab on :8888 ..."
+echo "[3/4] Starting Open Hands on :3001 ..."
+WORKSPACE_BASE=/workspace/project \
+RUNTIME=local \
+LLM_MODEL="openai/${SERVED_NAME}" \
+LLM_BASE_URL="http://localhost:8910/v1" \
+LLM_API_KEY="${API_KEY:-none}" \
+/opt/openhands/bin/python -m openhands.server.listen \
+    --host 0.0.0.0 --port 3001 &
+OPENHANDS_PID=$!
+
+###############################################################################
+# [4/4] JupyterLab
+###############################################################################
+echo "[4/4] Starting JupyterLab on :8888 ..."
 jupyter lab \
     --ip=0.0.0.0 --port=8888 \
     --no-browser --allow-root \
     --NotebookApp.token='' --NotebookApp.password='' \
     --ServerApp.allow_origin='*' --ServerApp.disable_check_xsrf=True &
 JUPYTER_PID=$!
-
-###############################################################################
-# Helper: aider launcher (recommended coding sampler baked in)
-###############################################################################
-AIDER_KEY="${API_KEY:-none}"
-cat > /workspace/aider-start.sh << AIDEREOF
-#!/bin/bash
-export OPENAI_API_BASE=http://localhost:8910/v1
-export OPENAI_API_KEY=${AIDER_KEY}
-echo "Starting Aider against '$SERVED_NAME' ..."
-echo "Use /add <file> to include files, then describe the change."
-echo "---"
-# temp 0.6 / top-p 0.95 are the Qwen-recommended precise-coding settings.
-aider --model openai/$SERVED_NAME \
-      --temperature 0.6 \
-      --no-show-model-warnings
-AIDEREOF
-chmod +x /workspace/aider-start.sh
 
 cat > /workspace/README.md << READMEEOF
 # RunPod Agentic Coding Template
@@ -189,17 +184,20 @@ File: $MODEL_FILE
 Set API_KEY in RunPod env vars to enable auth, leave unset for open access.
 
 ## Interfaces
-- JupyterLab : http://[pod-id]-8888.proxy.runpod.net
-- Open WebUI : http://[pod-id]-3000.proxy.runpod.net
-- API (OpenAI): http://[pod-id]-8910.proxy.runpod.net/v1
+- Open Hands (agentic coding) : http://[pod-id]-3001.proxy.runpod.net  <-- start here
+- Open WebUI  (chat)          : http://[pod-id]-3000.proxy.runpod.net
+- llama-ui    (raw API/chat)  : http://[pod-id]-8910.proxy.runpod.net
+- JupyterLab                  : http://[pod-id]-8888.proxy.runpod.net
 
-## Agentic coding
-    bash /workspace/aider-start.sh
+## Open Hands usage
+Open the :3001 URL — it will already be pointed at your local model.
+Your project files live in /workspace/project — mount a network volume
+there to persist work across pod restarts.
 
 ## Switch / resize the model (set as pod env vars, then restart)
 - MODEL_CHOICE=qwen-35b      # default, HauhauCS 35B-A3B uncensored
-- MODEL_CHOICE=qwen-coder    # Huihui Qwen3-Coder-30B abliterated (A/B test)
-- MODEL_CHOICE=qwen-35b-base # non-uncensored baseline (A/B vs Aggressive for drift)
+- MODEL_CHOICE=qwen-coder    # Huihui Qwen3-Coder-30B abliterated
+- MODEL_CHOICE=qwen-35b-base # non-uncensored baseline
 - QWEN_QUANT=Q8_K_P          # 44GB, needs 96GB card | Q6_K_P=31GB for 48GB cards
 - ENABLE_THINKING=false      # faster, no chain-of-thought
 
@@ -208,10 +206,11 @@ READMEEOF
 
 echo ""
 echo "=== All services started ==="
+echo "Open Hands : http://localhost:3001  <-- agentic coding"
+echo "Open WebUI : http://localhost:3000  (chat)"
+echo "llama-ui   : http://localhost:8910"
 echo "JupyterLab : http://localhost:8888"
-echo "Open WebUI : http://localhost:3000"
-echo "API        : http://localhost:8910/v1   ($AUTH_NOTE)"
-echo "Agentic    : bash /workspace/aider-start.sh"
+echo "Auth       : $AUTH_NOTE"
 echo ""
 
 wait $LLAMA_PID
