@@ -26,11 +26,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN git clone --depth 1 https://github.com/ggerganov/llama.cpp.git
 
 # NOTE: -DGGML_CUDA=ON  (NOT the old, now-ignored -DLLAMA_CUDA=ON).
+#
+# The two CMAKE_*_PATH / linker flags below fix the
+#   "undefined reference to cuMemGetAllocationGranularity"
+# link error: those cuMem* symbols live in the real CUDA *driver*
+# (libcuda.so.1), which only exists at RUNTIME (injected by the NVIDIA
+# container runtime). At build time only a stub is present, so we point
+# the linker at the stub dir and allow the symbols to resolve later.
 RUN cd llama.cpp && cmake -B build \
         -DGGML_CUDA=ON \
         -DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCH} \
         -DLLAMA_CURL=ON \
         -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_LIBRARY_PATH=/usr/local/cuda/lib64/stubs \
+        -DCMAKE_EXE_LINKER_FLAGS="-Wl,--allow-shlib-undefined" \
     && cmake --build build --config Release -j"$(nproc)" \
         --target llama-server llama-cli
 
