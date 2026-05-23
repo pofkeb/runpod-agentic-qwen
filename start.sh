@@ -131,7 +131,7 @@ echo "[2/3] Starting Open WebUI on :3000 ..."
 OPENAI_API_BASE_URL="http://localhost:8910/v1" \
 OPENAI_API_KEY="$API_KEY" \
 WEBUI_AUTH=false \
-python3 -m open_webui.serve --host 0.0.0.0 --port 3000 &
+open-webui serve --host 0.0.0.0 --port 3000 &
 WEBUI_PID=$!
 
 ###############################################################################
