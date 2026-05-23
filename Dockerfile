@@ -50,9 +50,9 @@ FROM nvidia/cuda:12.8.0-runtime-ubuntu24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
-ENV HF_HUB_ENABLE_HF_TRANSFER=1
+ENV HF_XET_HIGH_PERFORMANCE=1
 # llama.cpp + each app's venv bin on PATH
-ENV PATH="/opt/llama:/opt/webui/bin:/opt/aider/bin:/opt/tools/bin:${PATH}"
+ENV PATH="/opt/llama:/opt/webui/bin:/opt/openhands/bin:/opt/tools/bin:${PATH}"
 ENV LD_LIBRARY_PATH="/opt/llama:${LD_LIBRARY_PATH}"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -66,19 +66,23 @@ RUN ldconfig /opt/llama
 
 WORKDIR /workspace
 
-# Open WebUI needs Python 3.11/3.12 (that's why the base is 24.04) and pins deps
-# that clash with aider, so each app gets its own isolated venv. Separate RUN
-# layers so a failure points at the exact app and caching is reused.
+# Each app gets its own isolated venv to avoid dependency conflicts.
 RUN python3 -m venv /opt/webui && /opt/webui/bin/pip install --no-cache-dir open-webui
-RUN python3 -m venv /opt/aider && /opt/aider/bin/pip install --no-cache-dir aider-chat
+
+# Open Hands — browser-based agentic coding UI (like Claude Code but in the browser).
+# RUNTIME=local tells it to run code directly in the container instead of
+# spinning up a nested Docker sandbox (which isn't available on RunPod).
+RUN python3 -m venv /opt/openhands && \
+    /opt/openhands/bin/pip install --no-cache-dir openhands-ai
+
 RUN python3 -m venv /opt/tools && /opt/tools/bin/pip install --no-cache-dir \
         jupyterlab "huggingface_hub[cli,hf_transfer]"
 
-RUN mkdir -p /workspace/models
+RUN mkdir -p /workspace/models /workspace/project
 
 COPY start.sh /start.sh
 RUN chmod +x /start.sh
 
-# 8910 = llama.cpp API | 3000 = Open WebUI | 8888 = JupyterLab
-EXPOSE 8888 8910 3000
+# 8910 = llama.cpp API | 3000 = Open WebUI | 3001 = Open Hands | 8888 = JupyterLab
+EXPOSE 8888 8910 3000 3001
 ENTRYPOINT ["/start.sh"]
