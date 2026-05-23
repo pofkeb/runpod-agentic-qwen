@@ -46,20 +46,19 @@ RUN cd llama.cpp && cmake -B build \
 ###############################################################################
 # Stage 2 — Runtime
 ###############################################################################
-FROM nvidia/cuda:12.8.0-runtime-ubuntu22.04
+FROM nvidia/cuda:12.8.0-runtime-ubuntu24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 ENV HF_HUB_ENABLE_HF_TRANSFER=1
-# llama.cpp binaries + their shared libs live here
-ENV PATH="/opt/llama:${PATH}"
+# llama.cpp + each app's venv bin on PATH
+ENV PATH="/opt/llama:/opt/webui/bin:/opt/aider/bin:/opt/tools/bin:${PATH}"
 ENV LD_LIBRARY_PATH="/opt/llama:${LD_LIBRARY_PATH}"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        python3 python3-pip python3-dev git curl wget ca-certificates \
-        nodejs npm \
-    && rm -rf /var/lib/apt/lists/* \
-    && ln -sf /usr/bin/python3 /usr/bin/python
+        python3 python3-venv python3-dev build-essential \
+        git curl wget ca-certificates nodejs npm \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy the whole bin dir so both the executables AND libllama/libggml*.so come along.
 COPY --from=builder /app/llama.cpp/build/bin/ /opt/llama/
@@ -67,9 +66,13 @@ RUN ldconfig /opt/llama
 
 WORKDIR /workspace
 
-RUN pip3 install --no-cache-dir \
-        "huggingface_hub[cli,hf_transfer]" \
-        jupyterlab open-webui aider-chat
+# Open WebUI needs Python 3.11/3.12 (that's why the base is 24.04) and pins deps
+# that clash with aider, so each app gets its own isolated venv. Separate RUN
+# layers so a failure points at the exact app and caching is reused.
+RUN python3 -m venv /opt/webui && /opt/webui/bin/pip install --no-cache-dir open-webui
+RUN python3 -m venv /opt/aider && /opt/aider/bin/pip install --no-cache-dir aider-chat
+RUN python3 -m venv /opt/tools && /opt/tools/bin/pip install --no-cache-dir \
+        jupyterlab "huggingface_hub[cli,hf_transfer]"
 
 RUN mkdir -p /workspace/models
 
