@@ -22,7 +22,12 @@ BASE_QUANT="${BASE_QUANT:-Q6_K}"
 CTX_SIZE="${CTX_SIZE:-262144}"       # native max; drop to 131072 if you want lighter
 GPU_LAYERS="${GPU_LAYERS:-99}"       # 99 = offload everything to GPU
 THREADS="${THREADS:-16}"
-API_KEY="${API_KEY:-local}"
+
+# API_KEY is optional. If set (e.g. API_KEY=mysecret in RunPod env vars),
+# llama-server and all services will require that key.
+# If left unset or empty, no auth is required — anyone with the URL can use it.
+API_KEY="${API_KEY:-}"
+
 # Thinking ON by default (best for agentic loops). Set ENABLE_THINKING=false to disable.
 ENABLE_THINKING="${ENABLE_THINKING:-true}"
 
@@ -91,11 +96,21 @@ if [ "$ENABLE_THINKING" = "false" ]; then
     THINK_ARGS=(--chat-template-kwargs '{"enable_thinking": false}')
 fi
 
+# API key args — only added if API_KEY is non-empty
+APIKEY_ARGS=()
+if [ -n "$API_KEY" ]; then
+    APIKEY_ARGS=(--api-key "$API_KEY")
+    AUTH_NOTE="key: $API_KEY"
+else
+    AUTH_NOTE="no auth (open)"
+fi
+
 echo "======================================================================"
 echo " Model    : $REPO"
 echo " File     : $MODEL_FILE"
 echo " Served as: $SERVED_NAME   (use this as the model name in API/aider)"
 echo " Context  : $CTX_SIZE | Thinking: $ENABLE_THINKING"
+echo " Auth     : $AUTH_NOTE"
 echo "======================================================================"
 
 ###############################################################################
@@ -110,8 +125,8 @@ llama-server \
     --ctx-size "$CTX_SIZE" \
     --threads "$THREADS" \
     --flash-attn on \
-    --api-key "$API_KEY" \
     --jinja \
+    "${APIKEY_ARGS[@]}" \
     "${THINK_ARGS[@]}" &
 LLAMA_PID=$!
 
@@ -129,7 +144,8 @@ done
 ###############################################################################
 echo "[2/3] Starting Open WebUI on :3000 ..."
 OPENAI_API_BASE_URL="http://localhost:8910/v1" \
-OPENAI_API_KEY="$API_KEY" \
+OPENAI_API_KEY="${API_KEY:-none}" \
+OPENAI_API_KEYS="${API_KEY:-none}" \
 WEBUI_AUTH=false \
 open-webui serve --host 0.0.0.0 --port 3000 &
 WEBUI_PID=$!
@@ -148,10 +164,11 @@ JUPYTER_PID=$!
 ###############################################################################
 # Helper: aider launcher (recommended coding sampler baked in)
 ###############################################################################
+AIDER_KEY="${API_KEY:-none}"
 cat > /workspace/aider-start.sh << AIDEREOF
 #!/bin/bash
 export OPENAI_API_BASE=http://localhost:8910/v1
-export OPENAI_API_KEY=$API_KEY
+export OPENAI_API_KEY=${AIDER_KEY}
 echo "Starting Aider against '$SERVED_NAME' ..."
 echo "Use /add <file> to include files, then describe the change."
 echo "---"
@@ -168,10 +185,13 @@ cat > /workspace/README.md << READMEEOF
 ## Currently serving: $SERVED_NAME
 File: $MODEL_FILE
 
+## Auth: $AUTH_NOTE
+Set API_KEY in RunPod env vars to enable auth, leave unset for open access.
+
 ## Interfaces
 - JupyterLab : http://[pod-id]-8888.proxy.runpod.net
 - Open WebUI : http://[pod-id]-3000.proxy.runpod.net
-- API (OpenAI): http://[pod-id]-8910.proxy.runpod.net/v1   (api-key: $API_KEY)
+- API (OpenAI): http://[pod-id]-8910.proxy.runpod.net/v1
 
 ## Agentic coding
     bash /workspace/aider-start.sh
@@ -190,7 +210,7 @@ echo ""
 echo "=== All services started ==="
 echo "JupyterLab : http://localhost:8888"
 echo "Open WebUI : http://localhost:3000"
-echo "API        : http://localhost:8910/v1   (key: $API_KEY)"
+echo "API        : http://localhost:8910/v1   ($AUTH_NOTE)"
 echo "Agentic    : bash /workspace/aider-start.sh"
 echo ""
 
